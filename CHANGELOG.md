@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-27
+
+Fixes from an independent review by Codex.
+
+### Fixed
+- `baton guard` missed files whose names git quotes in plain output (non-ASCII,
+  tabs, newlines, quotes); every path-listing git call now uses `-z`.
+- Configurations where files collide (`handoff.file = "baton.toml"`, a target
+  that is another agent's `AGENTS.<agent>.md` overlay, and similar) are rejected
+  before anything is written.
+- The handoff log is read only inside `## Session log`; headings in code fences
+  or other sections no longer count, and future-dated entries are reported as
+  invalid instead of making the log look fresh.
+
+### Changed
+- README describes `guard` as reporting violations after the fact and the
+  dependency story precisely; the Action documents how its input is split.
+- CI exercises the Action with multi-word commands and shell metacharacters.
+
 ## [0.1.1] - 2026-11-27
 
 ### Fixed

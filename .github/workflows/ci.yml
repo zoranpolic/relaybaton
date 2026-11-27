@@ -37,6 +37,28 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./
+          fetch-depth: 0
+      - name: check (default)
+        uses: ./
         with:
           command: check
+      - name: multi-word command
+        uses: ./
+        with:
+          command: handoff list -n 1
+      - name: guard against the base branch
+        uses: ./
+        with:
+          command: guard --agent claude --base origin/main
+      - name: shell metacharacters stay literal arguments
+        id: injection
+        continue-on-error: true
+        uses: ./
+        with:
+          command: check; touch /tmp/relaybaton-injected
+      - name: assert the injection attempt failed and ran nothing
+        env:
+          OUTCOME: ${{ steps.injection.outcome }}
+        run: |
+          test "$OUTCOME" = failure
+          test ! -e /tmp/relaybaton-injected

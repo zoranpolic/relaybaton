@@ -146,6 +146,8 @@ def _print_status(st: handoff.HandoffStatus, file: str, out: TextIO) -> None:
             f"{st.age_days} day(s) old (limit {st.max_age_days}), {st.entries} entries",
             file=out,
         )
+    if st.future:
+        print(f"  INVALID   {st.future} entry(ies) dated in the future; fix the date(s)", file=out)
 
 
 def cmd_handoff_status(args: argparse.Namespace, out: TextIO) -> int:
@@ -153,7 +155,7 @@ def cmd_handoff_status(args: argparse.Namespace, out: TextIO) -> int:
     max_age = args.max_age or cfg.handoff.max_age_days
     st = handoff.status(cfg.path(cfg.handoff.file), max_age, _today(args.today))
     _print_status(st, cfg.handoff.file, out)
-    return PROBLEM if st.stale else OK
+    return OK if st.healthy else PROBLEM
 
 
 def cmd_handoff_list(args: argparse.Namespace, out: TextIO) -> int:
@@ -203,7 +205,7 @@ def cmd_doctor(args: argparse.Namespace, out: TextIO) -> int:
     print("handoff log:", file=out)
     st = handoff.status(cfg.path(cfg.handoff.file), cfg.handoff.max_age_days, _today(args.today))
     _print_status(st, cfg.handoff.file, out)
-    problems = sum(s.state is not sync.State.OK for s in statuses) + int(st.stale)
+    problems = sum(s.state is not sync.State.OK for s in statuses) + int(st.stale) + int(st.future > 0)
     print("healthy" if not problems else f"{problems} problem(s) found", file=out)
     return PROBLEM if problems else OK
 

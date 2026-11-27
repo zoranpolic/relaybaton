@@ -87,3 +87,30 @@ def test_status_uses_newest_date_not_first_entry(tmp_path: Path) -> None:
     log.write_text("## Session log\n### 2026-06-14 — a\n\nold\n### 2026-11-25 — b\n\npasted out of order\n")
     st = handoff.status(log, 14, D("2026-11-27"))
     assert st.newest == D("2026-11-25") and st.age_days == 2
+
+
+def test_fenced_examples_and_other_sections_are_not_entries() -> None:
+    text = (
+        "# Handoff log\n\n"
+        "### 2099-01-01 — example before the log\n\n"
+        "## Session log\n\n"
+        "### 2026-11-20 — claude\n\nreal entry\n\n"
+        "```markdown\n### 2099-01-01 — an example inside a fence\n```\n\n"
+        "## Standing context\n\n"
+        "### 2026-11-26 — a heading in another section\n"
+    )
+    entries = handoff.parse(text)
+    assert [e.day for e in entries] == [D("2026-11-20")]
+    assert "an example inside a fence" in entries[0].body
+
+
+def test_future_dates_are_invalid_not_fresh(tmp_path: Path) -> None:
+    log = tmp_path / "HANDOFF.md"
+    log.write_text("## Session log\n### 2099-01-01 — typo\n\nx\n### 2026-09-01 — real\n\ny\n")
+    st = handoff.status(log, 14, D("2026-11-27"))
+    assert st.future == 1
+    assert st.newest == D("2026-09-01") and st.stale and not st.healthy
+
+    log.write_text("## Session log\n### 2099-01-01 — only a typo\n\nx\n")
+    st = handoff.status(log, 14, D("2026-11-27"))
+    assert st.newest is None and st.future == 1 and st.stale

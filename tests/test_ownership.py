@@ -79,3 +79,22 @@ def test_renaming_an_owned_file_still_counts(git_project: Path) -> None:
     files = ownership.changed_files(git_project, base="main")
     assert "plan-codex.md" in files
     assert ownership.check(files, "claude", RULES) == [ownership.Violation("plan-codex.md", "codex")]
+
+
+@pytest.mark.parametrize(
+    "name", ["café-codex.md", "tab\there-codex.md", "new\nline-codex.md", 'quote"-codex.md']
+)
+def test_unusual_file_names_are_not_quoted_away(git_project: Path, name: str) -> None:
+    """Regression: git quotes such names in plain output, so globs never matched them."""
+    (git_project / name).write_text("x\n")
+    files = ownership.changed_files(git_project)
+    assert name in files
+    assert ownership.check(files, "claude", RULES) == [ownership.Violation(name, "codex")]
+
+
+def test_unicode_path_matches_directory_rule(git_project: Path) -> None:
+    legal = git_project / "docs" / "legal"
+    legal.mkdir(parents=True)
+    (legal / "café.md").write_text("x\n")
+    files = ownership.changed_files(git_project)
+    assert ownership.check(files, "claude", RULES) == [ownership.Violation("docs/legal/café.md", "human")]

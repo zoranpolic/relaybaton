@@ -103,19 +103,22 @@ def load(start: Path) -> Config:
         ownership=ownership,
     )
     # Validate every path up front so a bad config fails before anything is written.
-    source_path = config.path(config.source)
-    handoff_path = config.path(config.handoff.file)
-    seen: dict[Path, str] = {}
+    # Every file relaybaton reads or writes must be distinct, or one command would
+    # corrupt another's input (e.g. `handoff add` rewriting baton.toml).
+    roles: dict[Path, str] = {(root / CONFIG_NAME).resolve(): CONFIG_NAME}
+
+    def claim(path: Path, role: str) -> None:
+        if path in roles:
+            raise ConfigError(f"{role} would overwrite {roles[path]}")
+        roles[path] = role
+
+    claim(config.path(config.source), f"source {config.source!r}")
+    for agent in config.targets:
+        # An agent name must not smuggle in a path, and its overlay is an input.
+        claim(config.path(f"AGENTS.{agent}.md"), f"overlay for {agent!r}")
+    claim(config.path(config.handoff.file), f"handoff log {config.handoff.file!r}")
     for agent, target in config.targets.items():
-        target_path = config.path(target)
-        config.path(f"AGENTS.{agent}.md")  # an agent name must not smuggle in a path
-        if target_path == source_path:
-            raise ConfigError(f"target for {agent!r} would overwrite the source file")
-        if target_path == handoff_path:
-            raise ConfigError(f"target for {agent!r} would overwrite the handoff log")
-        if target_path in seen:
-            raise ConfigError(f"agents {seen[target_path]!r} and {agent!r} share the target {target!r}")
-        seen[target_path] = agent
+        claim(config.path(target), f"target for {agent!r}")
     return config
 
 

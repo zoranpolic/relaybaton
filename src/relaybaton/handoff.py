@@ -39,23 +39,54 @@ class HandoffStatus:
     newest: date | None
     age_days: int | None
     max_age_days: int
+    future: int = 0  # entries dated after today: typos or examples, never evidence of freshness
 
     @property
     def stale(self) -> bool:
         return self.age_days is None or self.age_days >= self.max_age_days
 
+    @property
+    def healthy(self) -> bool:
+        return not self.stale and self.future == 0
+
+
+def _is_fence(line: str) -> bool:
+    stripped = line.lstrip()
+    return stripped.startswith("```") or stripped.startswith("~~~")
+
 
 def parse(text: str) -> list[Entry]:
-    """Return every ``### YYYY-MM-DD`` entry in file order."""
+    """Return the ``### YYYY-MM-DD`` entries of the session log, in file order.
+
+    Only the ``## Session log`` section is read when the file has one, and
+    headings inside fenced code blocks are ignored, so a documented example
+    entry can never count as a real handoff.
+    """
+    lines = text.splitlines()
+    has_log = any(line.strip() == LOG_HEADING for line in lines)
+    if has_log:
+        start = next(i for i, line in enumerate(lines) if line.strip() == LOG_HEADING) + 1
+        lines = lines[start:]
+
     entries: list[Entry] = []
     current: tuple[date, str] | None = None
     body: list[str] = []
+    in_fence = False
 
     def flush() -> None:
         if current is not None:
             entries.append(Entry(current[0], current[1], "\n".join(body).strip()))
 
-    for line in text.splitlines():
+    for line in lines:
+        if _is_fence(line):
+            in_fence = not in_fence
+            if current is not None:
+                body.append(line)
+            continue
+        if in_fence:
+            if current is not None:
+                body.append(line)
+            continue
         match = HEADING_RE.match(line)
         if match:
             try:
@@ -66,9 +97,11 @@ def parse(text: str) -> list[Entry]:
                 flush()
                 current, body = (day, match.group(2).strip()), []
                 continue
-        if line.startswith("## ") and current is not None:
+        if line.startswith("## "):
             flush()
             current, body = None, []
+            if has_log:
+                break  # the session log has ended
             continue
         if current is not None:
             body.append(line)
@@ -125,8 +158,10 @@ def status(path: Path, max_age_days: int, today: date) -> HandoffStatus:
     if not path.exists():
         return HandoffStatus(False, 0, None, None, max_age_days)
     entries = parse(path.read_text(encoding="utf-8"))
-    if not entries:
-        return HandoffStatus(True, 0, None, None, max_age_days)
+    future = sum(entry.day > today for entry in entries)
+    dated = [entry.day for entry in entries if entry.day <= today]
+    if not dated:
+        return HandoffStatus(True, len(entries), None, None, max_age_days, future)
     # Use the newest date, not the first entry: people do paste entries out of order.
-    newest = max(entry.day for entry in entries)
-    return HandoffStatus(True, len(entries), newest, (today - newest).days, max_age_days)
+    newest = max(dated)
+    return HandoffStatus(True, len(entries), newest, (today - newest).days, max_age_days, future)

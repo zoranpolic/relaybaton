@@ -17,8 +17,8 @@ repository, three things go wrong sooner or later:
 3. **Agents step on each other's work.** One agent "helpfully" rewrites a file another agent, or a
    person, owns.
 
-`baton` is a small, dependency-free CLI that fixes all three, and fails loudly in CI when they come
-back.
+`baton` is a small CLI with no third-party dependencies that detects all three, and fails CI when
+they come back once you add the matching command to your pipeline.
 
 ```text
 $ baton doctor
@@ -79,7 +79,7 @@ baton handoff list
 baton handoff status          # exits 1 when the newest entry is older than max_age_days
 ```
 
-Entries are dated Markdown headings, newest first, so people and agents can both read and write the
+Entries are dated Markdown headings under `## Session log`, newest first, so people and agents can both read and write the
 file:
 
 ```markdown
@@ -89,6 +89,8 @@ Tests pass on main. Please cut v0.1.0.
 ```
 
 `status` judges freshness from the **newest dated heading, never the file's modification time**.
+Headings inside code fences or outside the session log are ignored, and a future-dated entry is
+reported as invalid rather than counted as fresh.
 Sync clients and editors rewrite mtimes without adding a word, which is exactly how a handoff channel
 can be dead for months while every timestamp says it is healthy.
 
@@ -106,10 +108,10 @@ $ baton guard --agent claude --base origin/main
 1 file(s) belong to another agent: hand them off instead
 ```
 
-`guard` looks at everything changed on the branch (committed since `--base`, staged, unstaged and
+`guard` reports, after the fact, everything changed on the branch (committed since `--base`, staged, unstaged and
 untracked) and fails if the agent touched a file someone else owns. Renames count as touching the
-original file, so moving an owned file to a new name does not get past it. Run it in an agent's pre-commit
-hook or in CI on the agent's pull requests.
+original file, so moving an owned file to a new name does not get past it. It trusts the `--agent` name it is given and only runs when invoked, so wire it into the place that
+knows which agent made the change: that agent's pre-commit hook, or CI on the agent's pull requests.
 
 ## Use it in CI
 
@@ -119,16 +121,19 @@ As a GitHub Action:
 - uses: actions/checkout@v7
   with:
     fetch-depth: 0            # only needed for "guard --base ...", which compares branch history
-- uses: zoranpolic/relaybaton@v0.1.1
+- uses: zoranpolic/relaybaton@v0.1.2
   with:
     command: check            # or: doctor, "handoff status", "guard --agent codex --base origin/main"
 ```
+
+The `command` input is split on whitespace into arguments for `baton`; it is never run through a
+shell, so quoting and multi-line commands are not supported.
 
 As a [pre-commit](https://pre-commit.com) hook:
 
 ```yaml
 - repo: https://github.com/zoranpolic/relaybaton
-  rev: v0.1.1
+  rev: v0.1.2
   hooks:
     - id: baton-check
 ```
@@ -145,12 +150,16 @@ As a [pre-commit](https://pre-commit.com) hook:
 | `[handoff] max_age_days` | `14` | `status` fails at this age. |
 | `[ownership]` | empty | Glob → owning agent. Globs without `/` match the file name anywhere. |
 
+relaybaton refuses a configuration in which any two of these files collide (`baton.toml`, the
+source, each `AGENTS.<agent>.md` overlay, the handoff log and each target), before writing anything.
+
 Exit codes: `0` all good, `1` a check found a problem, `2` usage or configuration error.
 
 ## Design choices
 
-- **No runtime dependencies.** Standard library only (`tomllib`, `argparse`, `subprocess`), so
-  adding it to a pipeline adds no supply-chain surface.
+- **No third-party runtime dependencies.** Standard library only (`tomllib`, `argparse`,
+  `subprocess`). Installing it still means trusting relaybaton itself and its build tooling, so pin a
+  release tag or commit.
 - **Paths are confined to the repository.** A config copied from elsewhere cannot make `sync` write
   to `../../.bashrc`; absolute paths and `..` escapes are rejected before anything is written.
 - **Git is called with fixed argument lists**, never through a shell.

@@ -46,7 +46,7 @@ def test_rejects_paths_outside_root(tmp_path: Path, target: str) -> None:
 
 def test_rejects_target_overwriting_source(tmp_path: Path) -> None:
     write(tmp_path, '[targets]\nclaude = "AGENTS.md"\n')
-    with pytest.raises(ConfigError, match="overwrite the source"):
+    with pytest.raises(ConfigError, match="would overwrite source"):
         config.load(tmp_path)
 
 
@@ -71,7 +71,7 @@ def test_invalid_values(tmp_path: Path, text: str) -> None:
 
 def test_rejects_two_agents_sharing_a_target(tmp_path: Path) -> None:
     write(tmp_path, '[targets]\na = "X.md"\nb = "./X.md"\n')
-    with pytest.raises(ConfigError, match="share the target"):
+    with pytest.raises(ConfigError, match="would overwrite target"):
         config.load(tmp_path)
 
 
@@ -85,3 +85,21 @@ def test_rejects_agent_name_that_is_a_path(tmp_path: Path) -> None:
     write(tmp_path, '[targets]\n"/../../../x" = "X.md"\n')
     with pytest.raises(ConfigError):
         config.load(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ('[handoff]\nfile = "baton.toml"', "would overwrite baton.toml"),
+        ('source = "baton.toml"', "would overwrite baton.toml"),
+        ('[targets]\nclaude = "AGENTS.claude.md"', "would overwrite overlay"),
+        ('[targets]\nclaude = "CLAUDE.md"\ngemini = "AGENTS.claude.md"', "would overwrite overlay"),
+        ('[handoff]\nfile = "AGENTS.md"', "would overwrite source"),
+    ],
+)
+def test_rejects_every_file_collision(tmp_path: Path, text: str, message: str) -> None:
+    write(tmp_path, text)
+    before = sorted(p.name for p in tmp_path.iterdir())
+    with pytest.raises(ConfigError, match=message):
+        config.load(tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == before  # nothing written

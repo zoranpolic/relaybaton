@@ -136,3 +136,13 @@ def test_counts_must_be_positive(project: Path, args: list[str]) -> None:
 def test_guard_explains_missing_history(git_project: Path) -> None:
     code, out = run(git_project, "guard", "--agent", "claude", "--base", "origin/does-not-exist")
     assert code == ERROR and "fetch-depth: 0" in out
+
+
+def test_future_dated_entry_fails_status_and_doctor(project: Path) -> None:
+    run(project, "sync")
+    run(project, "handoff", "add", "--author", "claude", "--date", "2026-11-27", "fresh")
+    run(project, "handoff", "add", "--author", "claude", "--date", "2099-01-01", "typo")
+    code, out = run(project, "handoff", "status", "--today", "2026-11-27")
+    assert code == PROBLEM and "INVALID" in out and "1 entry(ies) dated in the future" in out
+    code, out = run(project, "doctor", "--today", "2026-11-27")
+    assert code == PROBLEM and "1 problem(s)" in out
