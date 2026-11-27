@@ -1,0 +1,6 @@
+- id: baton-check
+  name: baton check (agent instruction files in sync)
+  entry: baton check
+  language: python
+  pass_filenames: false
+  files: ^(AGENTS(\.[^/]+)?\.md|baton\.toml|CLAUDE\.md|GEMINI\.md|\.github/copilot-instructions\.md)$

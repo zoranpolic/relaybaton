@@ -1,0 +1,11 @@
+# This repository uses relaybaton on itself.
+source = "AGENTS.md"
+
+[targets]
+claude = "CLAUDE.md"
+gemini = "GEMINI.md"
+copilot = ".github/copilot-instructions.md"
+
+[handoff]
+file = "HANDOFF.md"
+max_age_days = 30
