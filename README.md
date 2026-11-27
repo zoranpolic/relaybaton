@@ -107,7 +107,8 @@ $ baton guard --agent claude --base origin/main
 ```
 
 `guard` looks at everything changed on the branch (committed since `--base`, staged, unstaged and
-untracked) and fails if the agent touched a file someone else owns. Run it in an agent's pre-commit
+untracked) and fails if the agent touched a file someone else owns. Renames count as touching the
+original file, so moving an owned file to a new name does not get past it. Run it in an agent's pre-commit
 hook or in CI on the agent's pull requests.
 
 ## Use it in CI
@@ -116,7 +117,9 @@ As a GitHub Action:
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: zoranpolic/relaybaton@v0.1.0
+  with:
+    fetch-depth: 0            # only needed for "guard --base ...", which compares branch history
+- uses: zoranpolic/relaybaton@v0.1.1
   with:
     command: check            # or: doctor, "handoff status", "guard --agent codex --base origin/main"
 ```
@@ -125,7 +128,7 @@ As a [pre-commit](https://pre-commit.com) hook:
 
 ```yaml
 - repo: https://github.com/zoranpolic/relaybaton
-  rev: v0.1.0
+  rev: v0.1.1
   hooks:
     - id: baton-check
 ```

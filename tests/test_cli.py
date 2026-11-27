@@ -125,3 +125,14 @@ def test_module_entry_point(project: Path) -> None:
         [sys.executable, "-m", "relaybaton", "--version"], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == f"baton {__version__}"
+
+
+@pytest.mark.parametrize("args", [["handoff", "list", "-n", "0"], ["handoff", "status", "--max-age", "-3"]])
+def test_counts_must_be_positive(project: Path, args: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["-C", str(project), *args])
+
+
+def test_guard_explains_missing_history(git_project: Path) -> None:
+    code, out = run(git_project, "guard", "--agent", "claude", "--base", "origin/does-not-exist")
+    assert code == ERROR and "fetch-depth: 0" in out

@@ -28,6 +28,22 @@ def _iso_date(value: str) -> str:
     return value
 
 
+def _positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a positive whole number, got {value!r}") from exc
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"expected a positive whole number, got {value!r}")
+    return number
+
+
+SHALLOW_HINT = (
+    " (comparing with --base needs the branch history; in GitHub Actions use "
+    "actions/checkout with fetch-depth: 0)"
+)
+
+
 # ---------------------------------------------------------------- commands
 
 
@@ -163,7 +179,8 @@ def cmd_guard(args: argparse.Namespace, out: TextIO) -> int:
     try:
         files = args.files or ownership.changed_files(cfg.root, args.base)
     except ownership.GitError as exc:
-        print(f"error: {exc}", file=out)
+        hint = SHALLOW_HINT if args.base and "no commits" not in str(exc) else ""
+        print(f"error: {exc}{hint}", file=out)
         return ERROR
     violations = ownership.check(files, args.agent, cfg.ownership)
     for v in violations:
@@ -228,12 +245,12 @@ def build_parser() -> argparse.ArgumentParser:
     h.set_defaults(func=cmd_handoff_add)
 
     h = hsub.add_parser("status", help="fail if the newest entry is too old")
-    h.add_argument("--max-age", type=int, help="override handoff.max_age_days")
+    h.add_argument("--max-age", type=_positive_int, help="override handoff.max_age_days")
     h.add_argument("--today", type=_iso_date, help=argparse.SUPPRESS)
     h.set_defaults(func=cmd_handoff_status)
 
     h = hsub.add_parser("list", help="show the newest entries")
-    h.add_argument("-n", type=int, default=5, help="how many (default 5)")
+    h.add_argument("-n", type=_positive_int, default=5, help="how many (default 5)")
     h.set_defaults(func=cmd_handoff_list)
 
     p = sub.add_parser("guard", help="fail if an agent changed files another agent owns")

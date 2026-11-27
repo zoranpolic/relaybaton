@@ -62,3 +62,20 @@ def test_repository_without_commits(tmp_path: Path) -> None:
 def test_not_a_repository(tmp_path: Path) -> None:
     with pytest.raises(ownership.GitError):
         ownership.changed_files(tmp_path)
+
+
+def test_renaming_an_owned_file_still_counts(git_project: Path) -> None:
+    """Regression: git's rename detection used to report only the new, unowned name."""
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=git_project, check=True, capture_output=True)
+
+    (git_project / "plan-codex.md").write_text("owned\n" * 20)
+    git("add", ".")
+    git("commit", "-q", "-m", "owned file")
+    git("checkout", "-q", "-b", "sneaky")
+    git("mv", "plan-codex.md", "plan.md")
+    git("commit", "-q", "-m", "rename away")
+    files = ownership.changed_files(git_project, base="main")
+    assert "plan-codex.md" in files
+    assert ownership.check(files, "claude", RULES) == [ownership.Violation("plan-codex.md", "codex")]

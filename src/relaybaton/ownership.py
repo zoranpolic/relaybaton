@@ -58,7 +58,11 @@ def _git(root: Path, *args: str) -> list[str]:
 
 
 def changed_files(root: Path, base: str | None = None) -> list[str]:
-    """Files changed on this branch (since ``base``), staged, unstaged or untracked."""
+    """Files changed on this branch (since ``base``), staged, unstaged or untracked.
+
+    Renames are reported as a deletion plus an addition (``--no-renames``), so
+    moving an owned file to an unowned name still counts as touching it.
+    """
     files: set[str] = set()
     try:
         _git(root, "rev-parse", "--verify", "--quiet", "HEAD")
@@ -68,9 +72,9 @@ def changed_files(root: Path, base: str | None = None) -> list[str]:
     if base:
         if not has_head:
             raise GitError(f"cannot compare with {base!r}: the repository has no commits")
-        files.update(_git(root, "diff", "--name-only", f"{base}...HEAD"))
+        files.update(_git(root, "diff", "--name-only", "--no-renames", f"{base}...HEAD"))
     if has_head:
-        files.update(_git(root, "diff", "--name-only", "HEAD"))
-    files.update(_git(root, "diff", "--name-only", "--cached"))
+        files.update(_git(root, "diff", "--name-only", "--no-renames", "HEAD"))
+    files.update(_git(root, "diff", "--name-only", "--no-renames", "--cached"))
     files.update(_git(root, "ls-files", "--others", "--exclude-standard"))
     return sorted(files)

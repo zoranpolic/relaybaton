@@ -67,3 +67,21 @@ def test_invalid_values(tmp_path: Path, text: str) -> None:
     write(tmp_path, text)
     with pytest.raises(ConfigError):
         config.load(tmp_path)
+
+
+def test_rejects_two_agents_sharing_a_target(tmp_path: Path) -> None:
+    write(tmp_path, '[targets]\na = "X.md"\nb = "./X.md"\n')
+    with pytest.raises(ConfigError, match="share the target"):
+        config.load(tmp_path)
+
+
+def test_rejects_target_overwriting_handoff_log(tmp_path: Path) -> None:
+    write(tmp_path, '[targets]\nclaude = "HANDOFF.md"\n')
+    with pytest.raises(ConfigError, match="handoff log"):
+        config.load(tmp_path)
+
+
+def test_rejects_agent_name_that_is_a_path(tmp_path: Path) -> None:
+    write(tmp_path, '[targets]\n"/../../../x" = "X.md"\n')
+    with pytest.raises(ConfigError):
+        config.load(tmp_path)

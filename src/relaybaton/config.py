@@ -103,11 +103,19 @@ def load(start: Path) -> Config:
         ownership=ownership,
     )
     # Validate every path up front so a bad config fails before anything is written.
-    config.path(config.source)
-    config.path(config.handoff.file)
+    source_path = config.path(config.source)
+    handoff_path = config.path(config.handoff.file)
+    seen: dict[Path, str] = {}
     for agent, target in config.targets.items():
-        if config.path(target) == config.path(config.source):
+        target_path = config.path(target)
+        config.path(f"AGENTS.{agent}.md")  # an agent name must not smuggle in a path
+        if target_path == source_path:
             raise ConfigError(f"target for {agent!r} would overwrite the source file")
+        if target_path == handoff_path:
+            raise ConfigError(f"target for {agent!r} would overwrite the handoff log")
+        if target_path in seen:
+            raise ConfigError(f"agents {seen[target_path]!r} and {agent!r} share the target {target!r}")
+        seen[target_path] = agent
     return config
 
 
