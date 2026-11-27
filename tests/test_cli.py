@@ -146,3 +146,44 @@ def test_future_dated_entry_fails_status_and_doctor(project: Path) -> None:
     assert code == PROBLEM and "INVALID" in out and "1 entry(ies) dated in the future" in out
     code, out = run(project, "doctor", "--today", "2026-11-27")
     assert code == PROBLEM and "1 problem(s)" in out
+
+
+def test_handoff_open_text_and_max_age(project: Path) -> None:
+    assert run(project, "handoff", "open")[1].strip() == "no open tasks in the handoff log"
+    run(project, "handoff", "add", "--author", "claude", "--date", "2026-11-10", "- [ ] old task\n- [x] done")
+    run(project, "handoff", "add", "--author", "codex", "--date", "2026-11-26", "- [ ] new task")
+    code, out = run(project, "handoff", "open", "--today", "2026-11-27")
+    assert code == OK and out.index("old task") < out.index("new task") and "2 open task(s)" in out
+    code, out = run(project, "handoff", "open", "--today", "2026-11-27", "--max-age", "14")
+    assert code == PROBLEM and "OVERDUE" in out and "1 at least 14 day(s) old" in out
+
+
+def test_json_outputs(project: Path) -> None:
+    import json
+
+    code, out = run(project, "check", "--json")
+    data = json.loads(out)
+    assert code == PROBLEM and data["ok"] is False and {t["state"] for t in data["targets"]} == {"missing"}
+
+    run(project, "sync")
+    run(project, "handoff", "add", "--author", "claude", "--date", "2026-11-20", "- [ ] follow up")
+    assert json.loads(run(project, "check", "--json")[1])["ok"] is True
+
+    code, out = run(project, "handoff", "status", "--json", "--today", "2026-11-27")
+    status = json.loads(out)
+    assert code == OK and status["age_days"] == 7 and status["healthy"] is True
+
+    code, out = run(project, "handoff", "open", "--json", "--today", "2026-11-27", "--max-age", "5")
+    tasks = json.loads(out)
+    assert code == PROBLEM and tasks["overdue"] == 1 and tasks["tasks"][0]["text"] == "follow up"
+
+    code, out = run(project, "doctor", "--json", "--today", "2026-11-27")
+    doctor = json.loads(out)
+    assert code == OK and doctor["healthy"] is True and doctor["open_tasks"] == 1
+
+
+def test_doctor_mentions_open_tasks(project: Path) -> None:
+    run(project, "sync")
+    run(project, "handoff", "add", "--author", "claude", "--date", "2026-11-27", "- [ ] ship it")
+    code, out = run(project, "doctor", "--today", "2026-11-27")
+    assert code == OK and "1 open task(s); oldest from 2026-11-27: ship it" in out

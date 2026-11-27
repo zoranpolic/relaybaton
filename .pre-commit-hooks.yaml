@@ -3,4 +3,4 @@
   entry: baton check
   language: python
   pass_filenames: false
-  files: ^(AGENTS(\.[^/]+)?\.md|baton\.toml|CLAUDE\.md|GEMINI\.md|\.github/copilot-instructions\.md)$
+  files: ^(AGENTS(\.[^/]+)?\.md|baton\.toml|CLAUDE\.md|GEMINI\.md|\.github/copilot-instructions\.md|\.cursor/rules/.+\.mdc|\.windsurfrules)$

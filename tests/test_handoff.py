@@ -114,3 +114,31 @@ def test_future_dates_are_invalid_not_fresh(tmp_path: Path) -> None:
     log.write_text("## Session log\n### 2099-01-01 — only a typo\n\nx\n")
     st = handoff.status(log, 14, D("2026-11-27"))
     assert st.newest is None and st.future == 1 and st.stale
+
+
+def test_tasks_are_found_and_fenced_examples_skipped(tmp_path: Path) -> None:
+    log = tmp_path / "HANDOFF.md"
+    log.write_text(
+        "## Session log\n"
+        "### 2026-11-25 — claude → codex\n\n"
+        "- [ ] cut the v0.2.0 release\n"
+        "- [x] update the changelog\n"
+        "```\n- [ ] an example, not a task\n```\n"
+        "### 2026-11-20 — codex\n\n"
+        "* [ ] review the Action inputs\n"
+        "  + [X] nested and done\n"
+    )
+    all_tasks = handoff.tasks(handoff.parse(log.read_text()))
+    assert [(t.text, t.done) for t in all_tasks] == [
+        ("cut the v0.2.0 release", False),
+        ("update the changelog", True),
+        ("review the Action inputs", False),
+        ("nested and done", True),
+    ]
+    pending = handoff.open_tasks(log)
+    assert [t.text for t in pending] == ["review the Action inputs", "cut the v0.2.0 release"]
+    assert pending[0].age(D("2026-11-27")) == 7
+
+
+def test_open_tasks_missing_file(tmp_path: Path) -> None:
+    assert handoff.open_tasks(tmp_path / "nope.md") == []

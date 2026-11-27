@@ -6,6 +6,7 @@ Exit codes: 0 = all good, 1 = a check found a problem, 2 = usage or config error
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -42,6 +43,32 @@ SHALLOW_HINT = (
     " (comparing with --base needs the branch history; in GitHub Actions use "
     "actions/checkout with fetch-depth: 0)"
 )
+
+
+def _emit_json(payload: dict, out: TextIO) -> None:
+    print(json.dumps(payload, indent=2, sort_keys=True), file=out)
+
+
+def _targets_json(statuses: list[sync.TargetStatus]) -> list[dict]:
+    return [{"agent": s.agent, "path": s.path, "state": s.state.value} for s in statuses]
+
+
+def _status_json(st: handoff.HandoffStatus, file: str) -> dict:
+    return {
+        "file": file,
+        "exists": st.exists,
+        "entries": st.entries,
+        "newest": st.newest.isoformat() if st.newest else None,
+        "age_days": st.age_days,
+        "max_age_days": st.max_age_days,
+        "future_dated": st.future,
+        "stale": st.stale,
+        "healthy": st.healthy,
+    }
+
+
+def _task_json(task: handoff.Task, today: date) -> dict:
+    return {"date": task.day.isoformat(), "entry": task.entry, "text": task.text, "age_days": task.age(today)}
 
 
 # ---------------------------------------------------------------- commands
@@ -95,6 +122,9 @@ def cmd_check(args: argparse.Namespace, out: TextIO) -> int:
     cfg = config.load(Path(args.directory))
     statuses = sync.plan(cfg)
     bad = [s for s in statuses if s.state is not sync.State.OK]
+    if args.json:
+        _emit_json({"ok": not bad, "source": cfg.source, "targets": _targets_json(statuses)}, out)
+        return PROBLEM if bad else OK
     for status in statuses:
         label = "ok" if status.state is sync.State.OK else status.state.value.upper()
         print(f"  {label:<10}{status.path}", file=out)
@@ -154,8 +184,39 @@ def cmd_handoff_status(args: argparse.Namespace, out: TextIO) -> int:
     cfg = config.load(Path(args.directory))
     max_age = args.max_age or cfg.handoff.max_age_days
     st = handoff.status(cfg.path(cfg.handoff.file), max_age, _today(args.today))
-    _print_status(st, cfg.handoff.file, out)
+    if args.json:
+        _emit_json(_status_json(st, cfg.handoff.file), out)
+    else:
+        _print_status(st, cfg.handoff.file, out)
     return OK if st.healthy else PROBLEM
+
+
+def cmd_handoff_open(args: argparse.Namespace, out: TextIO) -> int:
+    cfg = config.load(Path(args.directory))
+    today = _today(args.today)
+    pending = handoff.open_tasks(cfg.path(cfg.handoff.file))
+    overdue = [t for t in pending if args.max_age and t.age(today) >= args.max_age]
+    if args.json:
+        _emit_json(
+            {
+                "tasks": [_task_json(t, today) for t in pending],
+                "max_age_days": args.max_age,
+                "overdue": len(overdue),
+            },
+            out,
+        )
+        return PROBLEM if overdue else OK
+    if not pending:
+        print("no open tasks in the handoff log", file=out)
+        return OK
+    for task in pending:
+        label = "OVERDUE" if task in overdue else "open"
+        print(f"  {label:<10}{task.day.isoformat()}  {task.text}  ({task.entry})", file=out)
+    summary = f"{len(pending)} open task(s)"
+    if args.max_age:
+        summary += f", {len(overdue)} at least {args.max_age} day(s) old"
+    print(summary, file=out)
+    return PROBLEM if overdue else OK
 
 
 def cmd_handoff_list(args: argparse.Namespace, out: TextIO) -> int:
@@ -196,16 +257,39 @@ def cmd_guard(args: argparse.Namespace, out: TextIO) -> int:
 
 def cmd_doctor(args: argparse.Namespace, out: TextIO) -> int:
     cfg = config.load(Path(args.directory))
+    today = _today(args.today)
+    statuses = sync.plan(cfg)
+    log = cfg.path(cfg.handoff.file)
+    st = handoff.status(log, cfg.handoff.max_age_days, today)
+    pending = handoff.open_tasks(log)
+    problems = sum(s.state is not sync.State.OK for s in statuses) + int(st.stale) + int(st.future > 0)
+    if args.json:
+        _emit_json(
+            {
+                "version": __version__,
+                "root": str(cfg.root),
+                "targets": _targets_json(statuses),
+                "handoff": _status_json(st, cfg.handoff.file),
+                "open_tasks": len(pending),
+                "problems": problems,
+                "healthy": not problems,
+            },
+            out,
+        )
+        return PROBLEM if problems else OK
     print(f"relaybaton {__version__} in {cfg.root}", file=out)
     print("instructions:", file=out)
-    statuses = sync.plan(cfg)
     for status in statuses:
         label = "ok" if status.state is sync.State.OK else status.state.value.upper()
         print(f"  {label:<10}{status.path}", file=out)
     print("handoff log:", file=out)
-    st = handoff.status(cfg.path(cfg.handoff.file), cfg.handoff.max_age_days, _today(args.today))
     _print_status(st, cfg.handoff.file, out)
-    problems = sum(s.state is not sync.State.OK for s in statuses) + int(st.stale) + int(st.future > 0)
+    if pending:
+        oldest = pending[0]
+        print(
+            f"  info      {len(pending)} open task(s); oldest from {oldest.day.isoformat()}: {oldest.text}",
+            file=out,
+        )
     print("healthy" if not problems else f"{problems} problem(s) found", file=out)
     return PROBLEM if problems else OK
 
@@ -233,6 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("check", help="fail if any generated file is missing or out of date (for CI)")
     p.add_argument("--diff", action="store_true", help="show what differs")
+    p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("handoff", help="work with the handoff log")
@@ -249,7 +334,16 @@ def build_parser() -> argparse.ArgumentParser:
     h = hsub.add_parser("status", help="fail if the newest entry is too old")
     h.add_argument("--max-age", type=_positive_int, help="override handoff.max_age_days")
     h.add_argument("--today", type=_iso_date, help=argparse.SUPPRESS)
+    h.add_argument("--json", action="store_true", help="machine-readable output")
     h.set_defaults(func=cmd_handoff_status)
+
+    h = hsub.add_parser("open", help="list unchecked '- [ ]' tasks, oldest first")
+    h.add_argument(
+        "--max-age", type=_positive_int, help="fail if any open task is at least this many days old"
+    )
+    h.add_argument("--today", type=_iso_date, help=argparse.SUPPRESS)
+    h.add_argument("--json", action="store_true", help="machine-readable output")
+    h.set_defaults(func=cmd_handoff_open)
 
     h = hsub.add_parser("list", help="show the newest entries")
     h.add_argument("-n", type=_positive_int, default=5, help="how many (default 5)")
@@ -263,6 +357,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("doctor", help="run every check and summarize")
     p.add_argument("--today", type=_iso_date, help=argparse.SUPPRESS)
+    p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(func=cmd_doctor)
 
     return parser

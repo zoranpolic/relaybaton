@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-27
+
+### Added
+- `baton handoff open`: lists unchecked `- [ ]` tasks from every handoff entry,
+  oldest first, skipping fenced examples; `--max-age N` fails when a task has
+  waited N days or more. `doctor` reports the open-task count.
+- `--json` output for `check`, `doctor`, `handoff status` and `handoff open`,
+  with the same exit codes as text mode.
+- Cursor support: `.mdc` targets get Cursor's YAML front matter above the
+  generated header; the generated marker is recognized below front matter.
+- Commented Cursor and Windsurf examples in the `baton init` template; the
+  pre-commit hook also watches `.mdc` and `.windsurfrules` targets.
+
 ## [0.1.2] - 2026-11-27
 
 Fixes from an independent review by Codex.

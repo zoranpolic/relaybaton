@@ -154,6 +154,45 @@ def add_entry(
     return Entry(day, title, message.strip())
 
 
+TASK_RE = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.+?)\s*$")
+
+
+@dataclass(frozen=True)
+class Task:
+    """A Markdown checkbox (``- [ ] ...``) inside a handoff entry."""
+
+    day: date
+    entry: str
+    text: str
+    done: bool
+
+    def age(self, today: date) -> int:
+        return (today - self.day).days
+
+
+def tasks(entries: list[Entry]) -> list[Task]:
+    """Every checkbox in the given entries, skipping fenced examples."""
+    found: list[Task] = []
+    for entry in entries:
+        in_fence = False
+        for line in entry.body.splitlines():
+            if _is_fence(line):
+                in_fence = not in_fence
+                continue
+            match = None if in_fence else TASK_RE.match(line)
+            if match:
+                found.append(Task(entry.day, entry.title, match.group(2), match.group(1) != " "))
+    return found
+
+
+def open_tasks(path: Path) -> list[Task]:
+    """Unchecked tasks in the log, oldest first, so the longest-waiting work leads."""
+    if not path.exists():
+        return []
+    pending = [task for task in tasks(parse(path.read_text(encoding="utf-8"))) if not task.done]
+    return sorted(pending, key=lambda task: task.day)
+
+
 def status(path: Path, max_age_days: int, today: date) -> HandoffStatus:
     if not path.exists():
         return HandoffStatus(False, 0, None, None, max_age_days)

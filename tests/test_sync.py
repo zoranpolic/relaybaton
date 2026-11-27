@@ -77,3 +77,20 @@ def test_diff_shows_the_change(project: Path) -> None:
     assert "+Changed." in claude.diff()
     missing = sync.TargetStatus("x", "x.md", State.MISSING, "a", None)
     assert missing.diff() == ""
+
+
+def test_cursor_mdc_target_gets_front_matter_first(project: Path) -> None:
+    (project / "baton.toml").write_text(
+        '[targets]\ncursor = ".cursor/rules/agents.mdc"\nclaude = "CLAUDE.md"\n'
+    )
+    cfg = config.load(project)
+    sync.write(cfg)
+    mdc = (project / ".cursor" / "rules" / "agents.mdc").read_text()
+    assert mdc.startswith("---\ndescription: ")
+    assert "alwaysApply: true\n---\n<!-- relaybaton:generated" in mdc
+    assert not (project / "CLAUDE.md").read_text().startswith("---")
+    assert set(states(project).values()) == {State.OK}
+
+    mdc_path = project / ".cursor" / "rules" / "agents.mdc"
+    mdc_path.write_text(mdc + "hand edit\n")
+    assert states(project)["cursor"] is State.DRIFTED  # marker found below the front matter
