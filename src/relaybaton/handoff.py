@@ -169,6 +169,35 @@ class Task:
     def age(self, today: date) -> int:
         return (today - self.day).days
 
+    def is_for(self, agent: str) -> bool:
+        """True if the entry is addressed to ``agent`` or the task mentions ``@agent``."""
+        wanted = agent.strip().lower()
+        if not wanted:
+            return False
+        if wanted in recipients(self.entry):
+            return True
+        return any(name.lower() == wanted for name in MENTION_RE.findall(self.text))
+
+
+# "author → codex (subject)": the recipients follow the arrow, up to the subject.
+# "->" is accepted too, for entries typed by hand.
+_RECIPIENTS_RE = re.compile(r"(?:→|->)\s*([^()]*?)\s*(?:\(.*)?$")
+# "@codex" but not "zoran@codex.dev": no word character may precede the "@".
+MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9][\w-]*)")
+
+
+def recipients(title: str) -> set[str]:
+    """Lower-cased agent names an entry title addresses, e.g. ``{"codex"}``.
+
+    Several recipients may be separated by commas or ``&``:
+    ``claude → codex, gemini (release)``.
+    """
+    match = _RECIPIENTS_RE.search(title)
+    if not match:
+        return set()
+    names = re.split(r"\s*[,&]\s*", match.group(1))
+    return {name.strip().lower() for name in names if name.strip()}
+
 
 def tasks(entries: list[Entry]) -> list[Task]:
     """Every checkbox in the given entries, skipping fenced examples."""
@@ -185,11 +214,17 @@ def tasks(entries: list[Entry]) -> list[Task]:
     return found
 
 
-def open_tasks(path: Path) -> list[Task]:
-    """Unchecked tasks in the log, oldest first, so the longest-waiting work leads."""
+def open_tasks(path: Path, agent: str | None = None) -> list[Task]:
+    """Unchecked tasks in the log, oldest first, so the longest-waiting work leads.
+
+    With ``agent``, only tasks from entries addressed to that agent
+    (``→ agent`` in the heading) or that mention ``@agent`` are returned.
+    """
     if not path.exists():
         return []
     pending = [task for task in tasks(parse(path.read_text(encoding="utf-8"))) if not task.done]
+    if agent is not None:
+        pending = [task for task in pending if task.is_for(agent)]
     return sorted(pending, key=lambda task: task.day)
 
 

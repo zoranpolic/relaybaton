@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-11-27
+
+### Added
+- `baton handoff open --for AGENT` lists only the tasks meant for one agent:
+  those in entries addressed to it (`→ AGENT` in the heading, also `->` and
+  comma-separated recipients) and those that mention `@AGENT`. Matching is
+  case-insensitive, and e-mail addresses are not mentions. The JSON output
+  gains a `for` field.
+
 ## [0.2.0] - 2026-11-27
 
 ### Added

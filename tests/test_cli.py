@@ -187,3 +187,33 @@ def test_doctor_mentions_open_tasks(project: Path) -> None:
     run(project, "handoff", "add", "--author", "claude", "--date", "2026-11-27", "- [ ] ship it")
     code, out = run(project, "doctor", "--today", "2026-11-27")
     assert code == OK and "1 open task(s); oldest from 2026-11-27: ship it" in out
+
+
+def test_handoff_open_for_agent(project: Path) -> None:
+    import json
+
+    add = ("handoff", "add", "--date")
+    run(project, *add, "2026-11-20", "--author", "claude", "--to", "codex", "- [ ] cut v0.2.1")
+    run(project, *add, "2026-11-25", "--author", "codex", "- [ ] @claude update the README")
+    run(project, *add, "2026-11-26", "--author", "claude", "- [ ] note to self")
+
+    code, out = run(project, "handoff", "open", "--for", "codex", "--today", "2026-11-27")
+    assert code == OK and "cut v0.2.1" in out and "README" not in out and "note to self" not in out
+    assert "1 open task(s) for codex" in out
+
+    code, out = run(project, "handoff", "open", "--for", "@claude", "--today", "2026-11-27", "--max-age", "1")
+    assert code == PROBLEM and "OVERDUE" in out and "update the README" in out and "cut v0.2.1" not in out
+
+    code, out = run(project, "handoff", "open", "--for", "gemini")
+    assert code == OK and out.strip() == "no open tasks for gemini in the handoff log"
+
+    code, out = run(project, "handoff", "open", "--for", "codex", "--json", "--today", "2026-11-27")
+    data = json.loads(out)
+    assert code == OK and data["for"] == "codex" and [t["text"] for t in data["tasks"]] == ["cut v0.2.1"]
+    assert json.loads(run(project, "handoff", "open", "--json")[1])["for"] is None
+
+
+def test_handoff_open_for_rejects_empty_name(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        run(project, "handoff", "open", "--for", " @ ")
+    assert exc.value.code == ERROR and "expected an agent name" in capsys.readouterr().err

@@ -22,7 +22,7 @@ they come back once you add the matching command to your pipeline.
 
 ```text
 $ baton doctor
-relaybaton 0.2.0 in /work/my-service
+relaybaton 0.2.1 in /work/my-service
 instructions:
   ok        CLAUDE.md
   ok        .github/copilot-instructions.md
@@ -84,6 +84,7 @@ baton handoff list
 baton handoff status          # exits 1 when the newest entry is older than max_age_days
 baton handoff open            # unchecked "- [ ]" tasks across all entries, oldest first
 baton handoff open --max-age 7  # exits 1 if any task has waited a week or more
+baton handoff open --for codex  # only tasks addressed to codex
 ```
 
 Entries are dated Markdown headings under `## Session log`, newest first, so people and agents can both read and write the
@@ -102,6 +103,12 @@ reported as invalid rather than counted as fresh.
 Write follow-ups as Markdown checkboxes inside an entry (`- [ ] cut the release`). `baton handoff
 open` lists every unchecked one with the entry it came from, so a request one agent left for
 another cannot quietly disappear under newer entries. Tick it (`- [x]`) when it is done.
+
+`--for AGENT` narrows the list to one agent's work. A task counts when its entry is addressed to
+that agent (the `→ codex` part of the heading, written by `handoff add --to codex`; a hand-typed
+`->` and several names such as `→ codex, gemini` also work), or when the task itself mentions
+`@codex`. Names are matched case-insensitively, and an address such as `zoran@codex.dev` is not a
+mention. Combine it with `--max-age` to fail an agent's CI job when its own queue is overdue.
 Sync clients and editors rewrite mtimes without adding a word, which is exactly how a handoff channel
 can be dead for months while every timestamp says it is healthy.
 
@@ -132,7 +139,7 @@ As a GitHub Action:
 - uses: actions/checkout@v7
   with:
     fetch-depth: 0            # only needed for "guard --base ...", which compares branch history
-- uses: zoranpolic/relaybaton@v0.2.0
+- uses: zoranpolic/relaybaton@v0.2.1
   with:
     command: check            # or: doctor, "handoff status", "guard --agent codex --base origin/main"
 ```
@@ -144,7 +151,7 @@ As a [pre-commit](https://pre-commit.com) hook:
 
 ```yaml
 - repo: https://github.com/zoranpolic/relaybaton
-  rev: v0.2.0
+  rev: v0.2.1
   hooks:
     - id: baton-check
 ```
@@ -197,7 +204,6 @@ them stalled. Every check here exists because its absence caused a real failure.
 
 ## Roadmap
 
-- `baton handoff open` per assignee (tasks addressed to a specific agent)
 - Aider conventions and other agent formats as they settle
 - Publish to PyPI
 

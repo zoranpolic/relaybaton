@@ -142,3 +142,61 @@ def test_tasks_are_found_and_fenced_examples_skipped(tmp_path: Path) -> None:
 
 def test_open_tasks_missing_file(tmp_path: Path) -> None:
     assert handoff.open_tasks(tmp_path / "nope.md") == []
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("claude → codex", {"codex"}),
+        ("claude → Codex (release)", {"codex"}),
+        ("claude -> codex (typed by hand)", {"codex"}),
+        ("claude → codex, gemini & copilot (fan-out)", {"codex", "gemini", "copilot"}),
+        ("claude", set()),
+        ("claude (rename a -> b)", set()),
+        ("claude → codex (map a -> b)", {"codex"}),
+        ("claude → (no recipient)", set()),
+    ],
+)
+def test_recipients(title: str, expected: set[str]) -> None:
+    assert handoff.recipients(title) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "agent", "expected"),
+    [
+        ("@codex please review", "codex", True),
+        ("please review, @Codex.", "codex", True),
+        ("hand to (@codex)", "codex", True),
+        ("mail zoran@codex.dev", "codex", False),
+        ("@codexbot owns this", "codex", False),
+        ("@claude-code owns this", "claude-code", True),
+        ("no mention at all", "codex", False),
+    ],
+)
+def test_task_mentions(text: str, agent: str, expected: bool) -> None:
+    task = handoff.Task(D("2026-11-27"), "claude", text, done=False)
+    assert task.is_for(agent) is expected
+
+
+def test_task_is_for_blank_agent() -> None:
+    assert not handoff.Task(D("2026-11-27"), "claude → codex", "x", done=False).is_for("  ")
+
+
+def test_open_tasks_for_agent(tmp_path: Path) -> None:
+    log = tmp_path / "HANDOFF.md"
+    log.write_text(
+        "## Session log\n"
+        "### 2026-11-26 — claude → codex (release)\n\n"
+        "- [ ] cut the release\n"
+        "- [x] already done\n"
+        "### 2026-11-25 — codex\n\n"
+        "- [ ] @claude rebase the branch\n"
+        "- [ ] a note to self\n"
+        "### 2026-11-20 — claude -> gemini, codex\n\n"
+        "- [ ] check the docs\n"
+    )
+    assert [t.text for t in handoff.open_tasks(log, "codex")] == ["check the docs", "cut the release"]
+    assert [t.text for t in handoff.open_tasks(log, "CLAUDE")] == ["@claude rebase the branch"]
+    assert [t.text for t in handoff.open_tasks(log, "gemini")] == ["check the docs"]
+    assert handoff.open_tasks(log, "copilot") == []
+    assert len(handoff.open_tasks(log)) == 4

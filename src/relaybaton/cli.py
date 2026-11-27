@@ -29,6 +29,13 @@ def _iso_date(value: str) -> str:
     return value
 
 
+def _agent_name(value: str) -> str:
+    name = value.strip().removeprefix("@").strip()
+    if not name:
+        raise argparse.ArgumentTypeError("expected an agent name, got an empty string")
+    return name
+
+
 def _positive_int(value: str) -> int:
     try:
         number = int(value)
@@ -194,25 +201,28 @@ def cmd_handoff_status(args: argparse.Namespace, out: TextIO) -> int:
 def cmd_handoff_open(args: argparse.Namespace, out: TextIO) -> int:
     cfg = config.load(Path(args.directory))
     today = _today(args.today)
-    pending = handoff.open_tasks(cfg.path(cfg.handoff.file))
+    agent = args.agent
+    pending = handoff.open_tasks(cfg.path(cfg.handoff.file), agent)
     overdue = [t for t in pending if args.max_age and t.age(today) >= args.max_age]
     if args.json:
         _emit_json(
             {
                 "tasks": [_task_json(t, today) for t in pending],
+                "for": agent,
                 "max_age_days": args.max_age,
                 "overdue": len(overdue),
             },
             out,
         )
         return PROBLEM if overdue else OK
+    for_agent = f" for {agent}" if agent else ""
     if not pending:
-        print("no open tasks in the handoff log", file=out)
+        print(f"no open tasks{for_agent} in the handoff log", file=out)
         return OK
     for task in pending:
         label = "OVERDUE" if task in overdue else "open"
         print(f"  {label:<10}{task.day.isoformat()}  {task.text}  ({task.entry})", file=out)
-    summary = f"{len(pending)} open task(s)"
+    summary = f"{len(pending)} open task(s){for_agent}"
     if args.max_age:
         summary += f", {len(overdue)} at least {args.max_age} day(s) old"
     print(summary, file=out)
@@ -340,6 +350,13 @@ def build_parser() -> argparse.ArgumentParser:
     h = hsub.add_parser("open", help="list unchecked '- [ ]' tasks, oldest first")
     h.add_argument(
         "--max-age", type=_positive_int, help="fail if any open task is at least this many days old"
+    )
+    h.add_argument(
+        "--for",
+        dest="agent",
+        type=_agent_name,
+        metavar="AGENT",
+        help="only tasks from entries addressed to AGENT ('→ AGENT') or mentioning @AGENT",
     )
     h.add_argument("--today", type=_iso_date, help=argparse.SUPPRESS)
     h.add_argument("--json", action="store_true", help="machine-readable output")
